@@ -1,8 +1,5 @@
-module github.com/vmware-labs/yaml-jsonpointer
+module github.com/zillow/go-yaml-jsonpointer
 
-go 1.14
+go 1.21.0
 
-require (
-	github.com/go-openapi/jsonpointer v0.19.3
-	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
-)
+require github.com/zillow/go-yaml/v3 v3.2.1
