@@ -8,8 +8,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/go-openapi/jsonpointer"
-	yaml "gopkg.in/yaml.v3"
+	"github.com/zillow/go-yaml/v3"
+)
+
+const (
+	emptyJSONPointer     = ``
+	jsonPointerSeparator = `/`
 )
 
 var (
@@ -26,12 +30,10 @@ func FindAll(root *yaml.Node, ptr string) ([]*yaml.Node, error) {
 		return nil, fmt.Errorf("invalid empty pointer")
 	}
 
-	// TODO: remove dependency on jsonpointer since we only use it to split and unescape the pointer, which is trivial and well defined by the spec.
-	p, err := jsonpointer.New(ptr)
+	toks, err := jsonPointerToTokens(ptr)
 	if err != nil {
 		return nil, err
 	}
-	toks := p.DecodedTokens()
 
 	res, err := find(root, toks)
 	if err != nil {
@@ -146,4 +148,18 @@ func treeSubsetPred(a *yaml.Node) nodePredicate {
 	return func(b *yaml.Node) bool {
 		return isTreeSubset(a, b)
 	}
+}
+
+// Given a JSON pointer, return its tokens or an error if invalid.
+func jsonPointerToTokens(jsonPointer string) ([]string, error) {
+	if jsonPointer == emptyJSONPointer {
+		return []string{}, nil
+	}
+
+	if !strings.HasPrefix(jsonPointer, jsonPointerSeparator) {
+		return nil, fmt.Errorf(`JSON pointer must be empty or start with a "` + jsonPointerSeparator)
+	}
+
+	referenceTokens := strings.Split(jsonPointer, jsonPointerSeparator)
+	return referenceTokens[1:], nil
 }

@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"testing"
 
-	yaml "gopkg.in/yaml.v3"
+	"github.com/zillow/go-yaml/v3"
 )
 
 func TestIsTreeSubset(t *testing.T) {

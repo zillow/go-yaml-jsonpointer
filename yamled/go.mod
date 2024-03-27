@@ -1,4 +1,4 @@
-module github.com/vmware-labs/yaml-jsonpointer/yamled
+module github.com/zillow/go-yaml-jsonpointer/yamled
 
 go 1.14
 
