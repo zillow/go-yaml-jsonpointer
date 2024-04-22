@@ -156,10 +156,23 @@ func jsonPointerToTokens(jsonPointer string) ([]string, error) {
 		return []string{}, nil
 	}
 
-	if !strings.HasPrefix(jsonPointer, jsonPointerSeparator) {
-		return nil, fmt.Errorf(`JSON pointer must be empty or start with a "` + jsonPointerSeparator)
+	if err := ValidateJSONPointer(jsonPointer); err != nil {
+		return nil, err
 	}
 
 	referenceTokens := strings.Split(jsonPointer, jsonPointerSeparator)
 	return referenceTokens[1:], nil
+}
+
+// Given a JSON pointer, return an error if invalid.
+func ValidateJSONPointer(jsonPointer string) error {
+	if jsonPointer == emptyJSONPointer {
+		return nil
+	}
+
+	if !strings.HasPrefix(jsonPointer, jsonPointerSeparator) {
+		return fmt.Errorf(`JSON pointer must be empty or start with a "` + jsonPointerSeparator)
+	}
+
+	return nil
 }
