@@ -72,7 +72,6 @@ func TestInsertErrors(t *testing.T) {
 a:
   b:
     c: 42
-    d: [1, 2, 3]
 d:
 - e
 - f
@@ -92,6 +91,7 @@ d:
 		{`/d`, x, "cannot insert node type"},
 		{`/a/b/c/f`, x, "unhandled node type"},
 		{`/d/f`, x, "strconv.Atoi"},
+		{`/d/5`, x, "out of bounds"},
 	}
 
 	for i, tc := range tests {
