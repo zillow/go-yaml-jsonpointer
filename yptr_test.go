@@ -6,11 +6,106 @@ package yptr_test
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	yptr "github.com/zillow/go-yaml-jsonpointer"
 	"github.com/zillow/go-yaml/v3"
 )
+
+func ExampleInsert() {
+	src := `
+d:
+  - e
+  - f:
+      g: x
+  - h: y
+  - - i
+    - j
+`
+	arr1 := `[1, 2, 3]`
+	map1 := `q: xyz`
+	s1 := `x`
+
+	var n, a, m, x yaml.Node
+	yaml.Unmarshal([]byte(src), &n)
+	yaml.Unmarshal([]byte(arr1), &a)
+	yaml.Unmarshal([]byte(map1), &m)
+	yaml.Unmarshal([]byte(s1), &x)
+
+	_ = yptr.Insert(&n, `/f/d`, a)
+	_ = yptr.Insert(&n, ``, m)
+
+	_ = yptr.Insert(&n, `/d/1`, m)
+	_ = yptr.Insert(&n, `/d/-/c`, x)
+	_ = yptr.Insert(&n, `/d/2/f`, m)
+	_ = yptr.Insert(&n, `/d/3/f`, a)
+	_ = yptr.Insert(&n, `/d/4/-`, x)
+
+	out, err := yaml.Marshal(n.Content[0])
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println(string(out))
+	/* Output:
+d:
+    - e
+    - q: xyz
+    - f:
+        g: x
+        q: xyz
+    - h: y
+      f: [1, 2, 3]
+    - - i
+      - j
+      - x
+    - c: x
+f:
+    d: [1, 2, 3]
+q: xyz
+*/
+}
+
+func TestInsertErrors(t *testing.T) {
+	src := `
+a:
+  b:
+    c: 42
+    d: [1, 2, 3]
+d:
+- e
+- f
+`
+	s1 := `x`
+	var n, x yaml.Node
+	yaml.Unmarshal([]byte(src), &n)
+	yaml.Unmarshal([]byte(s1), &x)
+
+	tests := []struct {
+		ptr string
+		value yaml.Node
+		err string
+	}{
+		{``, x, "cannot insert node type"},
+		{`/a/b/c`, x, "cannot insert node type"},
+		{`/d`, x, "cannot insert node type"},
+		{`/a/b/c/f`, x, "unhandled node type"},
+		{`/d/f`, x, "strconv.Atoi"},
+	}
+
+	for i, tc := range tests {
+		t.Run(fmt.Sprint(i), func(t *testing.T) {
+			err := yptr.Insert(&n, tc.ptr, tc.value)
+			if err == nil {
+				t.Fatal("expecting error")
+			}
+			if !strings.HasPrefix(err.Error(), tc.err) {
+				t.Fatalf("expecting error %q, got %q", tc.err, err)
+			}
+		})
+	}
+}
 
 func ExampleFind() {
 	src := `
