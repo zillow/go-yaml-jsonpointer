@@ -4,7 +4,9 @@
 package yptr
 
 import (
+	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -78,6 +80,120 @@ func find(root *yaml.Node, toks []string) ([]*yaml.Node, error) {
 	return res, nil
 }
 
+// Insert inserts a value at the location pointed by the JSONPointer ptr in the yaml tree rooted at root.
+// If any nodes along the way do not exist, they are created such that a subsequent call to Find would find
+// the value at that location.
+//
+// Note that Insert does not replace existing values. If the location already exists in the yaml tree, Insert will
+// attempt to append the value to the existing node there. If this isn't possible, an error is returned.
+//
+// Also note that '-' is only treated as a special character if the currently referenced value is an existing array.
+// It cannot be used to create a new empty array at the current location.
+func Insert(root *yaml.Node, ptr string, value yaml.Node) error {
+	toks, err := jsonPointerToTokens(ptr)
+	if err != nil {
+		return err
+	}
+
+	// skip document nodes
+	if value.Kind == yaml.DocumentNode {
+		value = *value.Content[0]
+	}
+	if root.Kind == yaml.DocumentNode {
+		root = root.Content[0]
+	}
+
+	return insert(root, toks, value)
+}
+
+func insert(root *yaml.Node, toks []string, value yaml.Node) error {
+	if len(toks) == 0 {
+		if root.Kind == yaml.MappingNode {
+			if value.Kind == yaml.MappingNode {
+				root.Content = append(root.Content, value.Content...)
+				return nil
+			}
+			if len(root.Content) == 0 {
+				*root = value
+				return nil
+			}
+		}
+		return fmt.Errorf("cannot insert node type %v (%v) in node type %v (%v)", value.Kind, value.Tag, root.Kind, root.Tag)
+	}
+
+	switch root.Kind {
+	case yaml.SequenceNode:
+		return sequenceInsert(root, toks, value)
+	case yaml.MappingNode:
+		return mapInsert(root, toks, value)
+	default:
+		return fmt.Errorf("unhandled node type: %v (%v)", root.Kind, root.Tag)
+	}
+}
+
+func sequenceInsert(root *yaml.Node, toks []string, value yaml.Node) error {
+	// try to find the token in the node
+	next, err := match(root, toks[0])
+	if err != nil {
+		return err
+	}
+	if len(toks) == 1 {
+		return sequenceInsertAt(root, toks[0], value)
+	}
+	if next[0].Kind != yaml.ScalarNode {
+		return insert(next[0], toks[1:], value)
+	}
+	// insert an empty map and try again
+	n := yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	k := yaml.Node{Kind: yaml.ScalarNode, Value: toks[1], Tag: "!!str"}
+	v := yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	n.Content = append(n.Content, &k, &v)
+
+	err = sequenceInsertAt(root, toks[0], n)
+	if err != nil {
+		return err
+	}
+	return insert(&n, toks[1:], value)
+}
+
+// helper function for inserting a value at a specific index in an array
+func sequenceInsertAt(root *yaml.Node, tok string, n yaml.Node) error {
+	if tok == "-" {
+		root.Content = append(root.Content, &n)
+	} else {
+		i, err := strconv.Atoi(tok)
+		if err != nil {
+			return err
+		}
+		if i < 0 || i >= len(root.Content) {
+			return fmt.Errorf("out of bounds")
+		}
+		root.Content = slices.Insert(root.Content, i, &n)
+	}
+	return nil
+}
+
+func mapInsert(root *yaml.Node, toks []string, value yaml.Node) error {
+	// try to find the token in the node
+	next, err := match(root, toks[0])
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return err
+	}
+
+	if errors.Is(err, ErrNotFound) {
+		k := yaml.Node{Kind: yaml.ScalarNode, Value: toks[0]}
+		if len(toks) == 1 {
+			root.Content = append(root.Content, &k, &value)
+			return nil
+		}
+		// insert an empty map and try again
+		v := yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+		root.Content = append(root.Content, &k, &v)
+		return insert(&v, toks[1:], value)
+	}
+	return insert(next[0], toks[1:], value)
+}
+
 // match matches a JSONPointer token against a yaml Node.
 //
 // If root is a map, it performs a field lookup using tok as field name,
@@ -111,6 +227,10 @@ func match(root *yaml.Node, tok string) ([]*yaml.Node, error) {
 			}
 			return filter(c, treeSubsetPred(&mtree))
 		default:
+			if tok == "-" {
+				// dummy leaf node
+				return []*yaml.Node{{Kind: yaml.ScalarNode}}, nil
+			}
 			i, err := strconv.Atoi(tok)
 			if err != nil {
 				return nil, err
